@@ -5,7 +5,6 @@ from scipy.misc import imread
 import glob
 import h5py
 from PIL import Image
-import os
 import matplotlib.image as mpimg
 
 
@@ -25,11 +24,11 @@ def initalize_parameters(layers_dim):
     parameters = {} # dictionary used to store the parameters
     L = len(layers_dim)
     for i in range(L-2):
-        parameters["W"+ str(i+1)] = np.random.randn(layers_dim[i+1], layers_dim[i]) * 0.01# np.sqrt(np.divide(2,layers_dim[i]))  # he initialization for relu
+        parameters["W"+ str(i+1)] = np.random.randn(layers_dim[i+1], layers_dim[i]) * np.sqrt(np.divide(2,layers_dim[i]))  # he initialization for relu
         parameters["b"+str(i+1)] = np.zeros((layers_dim[i+1], 1))
         assert (parameters["W" + str(i+1)].shape == (layers_dim[i+1], layers_dim[i]))
         assert (parameters["b" + str(i+1)].shape == (layers_dim[i+1], 1))
-    parameters["W" + str(L-1)] = np.random.randn(layers_dim[L-1], layers_dim[L - 2]) * 0.01# np.sqrt(np.divide(1, layers_dim[L - 2]))  #he initialization, to avoid vanishing and exploding gradieints
+    parameters["W" + str(L-1)] = np.random.randn(layers_dim[L-1], layers_dim[L - 2]) * np.sqrt(np.divide(1, layers_dim[L - 2]))  #he initialization, to avoid vanishing and exploding gradieints
     parameters["b" + str(L-1)] = np.zeros((layers_dim[L-1], 1))
     assert (parameters["W" + str(L-1)].shape == (layers_dim[L-1], layers_dim[L - 2]))
     assert (parameters["b" + str(L-1)].shape == (layers_dim[L-1], 1))
@@ -153,16 +152,28 @@ def parameter_update(grad,learning_rate,parameters):
        
     return parameters
     
-def initialize_momentum(grad,parameters):
+def initialize_momentum(parameters):
+    """ Initializes the first momentum"""
     momentum={}
-    L= len(parameters) //3
+    L= len(parameters) //2
     for i in range(L):
-        momentum["dW" +str(i+1)] = np.zeros(grad["dW" + str(i+1)])
-        momentum["db" + str(i+1)] = np.zeros(grad["db" + str(i+1)])
+        momentum["dW" +str(i+1)] = np.zeros(parameters["W" + str(i+1)].shape)
+        momentum["db" + str(i+1)] = np.zeros(parameters["b" + str(i+1)].shape)
         ###############################################################################
-        assert(momentum["dW" +str(i+1)].shape == parameters["dW" +str(i+1)].shape)
-        assert(momentum["db" +str(i+1)].shape == parameters["db" +str(i+1)].shape)
+        assert(momentum["dW" +str(i+1)].shape == parameters["W" +str(i+1)].shape)
+        assert(momentum["db" +str(i+1)].shape == parameters["b" +str(i+1)].shape)
     return momentum
+
+def initialize_s_momentum(parameters):
+    """Initializes the second momentum of weights"""
+    s_momentum={}
+    L= len(parameters)//2
+    for i in range(L):
+        s_momentum["dW" +str(i+1)] = np.zeros(parameters["W" + str(i+1)].shape)
+        s_momentum["db" +str(i+1)] = np.zeros(parameters["b" + str(i+1)].shape)
+        assert(s_momentum["dW" +str(i+1)].shape == parameters["W" +str(i+1)].shape)
+        assert(s_momentum["db" +str(i+1)].shape == parameters["b" +str(i+1)].shape)
+    return s_momentum
     
 def parameter_update_momentum(parameters,grad, momentum, learning_rate,beta):
     """This optimization algorithm uses Gradient descent with momentum to optimize the parameters"""    
@@ -171,15 +182,52 @@ def parameter_update_momentum(parameters,grad, momentum, learning_rate,beta):
         momentum["dW" +str(i+1)] = beta * momentum["dW" +str(i+1)] + (1-beta) * grad["dW" + str(i+1)]
         momentum["db" +str(i+1)] = beta * momentum["db" +str(i+1)] + (1-beta) * grad["db" + str(i+1)]
         
-        parameters["dW" + str(i+1)] = parameters["dW" + str(i+1)] - learning_rate * momentum["dW" +str(i+1)]
-        parameters["db" + str(i+1)] = parameters["db" + str(i+1)] - learning_rate * momentum["db" +str(i+1)]
+        parameters["W" + str(i+1)] = parameters["W" + str(i+1)] - learning_rate * momentum["dW" +str(i+1)]
+        parameters["b" + str(i+1)] = parameters["b" + str(i+1)] - learning_rate * momentum["db" +str(i+1)]
         
     return parameters, momentum
     
+def RMS_prop_update(parameters, grad, momentum, learning_rate, beta):
+    epsilon = 1e-8
+    L= len(grad) //3
+    for i in len(L):
+        s_momentum["dW" + str(i+1)] = beta * s_momentum["dW" + str(i+1)] + (1-beta) * np.square(grad["dW" +str(i + 1)])
+        s_momentum["db" + str(i+1)] = beta * s_momentum["db" + str(i+1)] + (1-beta) * np.square(grad["db" +str(i + 1)])
+        
+        parameters["W" +str(i+1)] = parameters["W" +str(i+1)] - learning_rate * np.divide(grad["dW" + str(i+1)], (np.sqrt(s_momentum["dW" +str(i+1)]) +epsilon))
+        parameters["b" +str(i+1)] = parameters["b" +str(i+1)] - learning_rate * np.divide(grad["db" + str(i+1)], (np.sqrt(s_momentum["db" +str(i+1)]) +epsilon))
+    
+    return parameters, s_momentum       
+        
+    
+    
+def adam_algorithm(parameters, grad, momentum, learning_rate, beta1, beta2,t):
+    "beta1, beta2 are the exponential decay rates for moment estimates"
+    L= len(grad) // 3
+    epsilon = 1e-8
+    
+    for i in range(L):
+        momentum["dW"] = beta1 * momentum["dW" + str(i+1)] + (1-beta1) * grad["dW" + str(i+1)]
+        momentum["db"] = beta1 * momentum["db" + str(i+1)] + (1-beta1) * grad["db" + str(i+1)]        
+        momentum["dW"] = np.divide(momentum["dW"] , (1- beta1**t))
+        momentum["db"] = np.divide(momentum["db"] , (1- beta1**t))
+        
+        s_momentum["dW" +str(i+1)] = beta2 * s_momentum["dW" + str(i+1)] + (1- beta2) * np.square(grad["dW" + str(i+1)])
+        s_momentum["db" +str(i+1)] = beta2 * s_momentum["db" + str(i+1)] + (1- beta2) * np.square(grad["db" + str(i+1)])
+        s_momentum["dW" +str(i+1)] = np.divide(s_momentum["dW"+str(i+1)] , (1- beta2**t))
+        s_momentum["db" +str(i+1)] = np.divide(s_momentum["db"+str(i+1)] , (1- beta2**t))
+
+        learning_rate_t = learning_rate * np.divide(np.sqrt(1- beta2 ** t), (1- beta1**t))                            # from Adams paper, increases efficiency   
+        
+        parameters["W" +str(i+1)] = parameters["W" +str(i+1)] - learning_rate_t * np.divide(momentum["dW" + str(i+1)], (np.sqrt(s_momentum["dW" +str(i+1)]) +epsilon))
+        parameters["b" +str(i+1)] = parameters["b" +str(i+1)] - learning_rate_t * np.divide(momentum["db" + str(i+1)], (np.sqrt(s_momentum["db" +str(i+1)]) +epsilon))
+    return parameters, momentum, s_momentum
     
 
-"""def Load_data(path):
     
+    
+
+def Load_data(path):    
     filelist = glob.glob(path+"/*.ppm")
     #x = np.array([np.array(Image.open(fname)) for fname in filelist])
    #    imag_list=np.zeros(110)
@@ -189,7 +237,7 @@ def parameter_update_momentum(parameters,grad, momentum, learning_rate,beta):
         image_list.append(temp_img)
 
     return image_list
-"""
+
 
 def predict(X, parameters):
     AL,_ = L_layer_forward_activation(X,parameters)
@@ -227,7 +275,7 @@ def cost_function(AL, Y ):
     cost = np.squeeze(cost)
     assert(cost.shape ==())
     return cost
-"""
+
 def Gradient_check(X,Y, parameters, gradients, epsilon,layers_dims):
   # parameters: Estimated set of parameters estimated using Back-Propagation
    # gradients: estimated using back-propagation
@@ -239,21 +287,21 @@ def Gradient_check(X,Y, parameters, gradients, epsilon,layers_dims):
     J_plus = np.zeros((num_parameters,1))
     J_minus = np.zeros((num_parameters,1))
     GraDderive = np.zeros((num_parameters,1))   
-    for i in range(len(vectorized_param)):
+    for i in range(num_parameters):
         vectorized_param_plus = np.copy(vectorized_param)
         vectorized_param_minus = np.copy(vectorized_param)
-        vectorized_param_plus[i,0] = vectorized_param_plus[i,0]+ epsilon
-        vectorized_param_minus[i,0] = vectorized_param_minus[i,0]- epsilon
+        vectorized_param_plus[i][0] = vectorized_param_plus[i][0]+ epsilon
+        vectorized_param_minus[i][0] = vectorized_param_minus[i][0]- epsilon
         param_plus = vector_to_dictionary(vectorized_param_plus,layers_dims)
         param_minus = vector_to_dictionary(vectorized_param_minus,layers_dims)
         y_hat_plus, _= L_layer_forward_activation(X,param_plus)
         y_hat_minus, _= L_layer_forward_activation(X,param_minus)
              
-        J_plus[i,0] = cost_function(y_hat_plus, Y )
-        J_minus[i,0] = cost_function(y_hat_minus, Y )
-        GraDderive[i,0] = np.divide((J_plus[i,0] - J_minus[i,0]), (2 * epsilon))
+        J_plus[i] = cost_function(y_hat_plus, Y )
+        J_minus[i] = cost_function(y_hat_minus, Y )
+        GraDderive[i] = np.divide((J_plus[i] - J_minus[i]), (2 * epsilon))
         
-    numerator = np.linalg.norm(GraDderive)
+    numerator = np.linalg.norm(GraDderive-grads)
     denominator = np.linalg.norm(grads) + np.linalg.norm(GraDderive)
     error =  np.divide(numerator, denominator)
     
@@ -282,27 +330,48 @@ def vector_to_dictionary(vector,layer_dims):
 def dictionary_to_vector(parameters):
 #    This function will convert parameters dictionary to vectors
     L=len(parameters) // 2
-    parameter_vector=[]
+    count=0
+    #parameter_vector=[]
+    
     for i in range(L):
-        tempW = parameters["W" + str(i + 1)].flatten()
-        tempb = parameters["b" + str(i + 1)].flatten()
-        parameter_vector= np.append(parameter_vector, tempW)
-        parameter_vector = np.append(parameter_vector, tempb)
-
-    return parameter_vector[...,None]  # this makes sure that its not tuple
+        #tempW = parameters["W" + str(i + 1)].flatten()
+        #tempb = parameters["b" + str(i + 1)].flatten()
+        #parameter_vector= np.append(parameter_vector, tempW)
+        #parameter_vector = np.append(parameter_vector, tempb)
+        tempW = np.reshape(parameters["W" + str(i + 1)],(-1,1))
+        tempb = np.reshape(parameters["b" + str(i + 1)],(-1,1))
+        temp_theta = np.concatenate((tempW,tempb),axis=0)
+        if count == 0:
+            theta = temp_theta           
+        else:
+            theta = np.concatenate((theta,temp_theta), axis=0)
+        count = count + 1
+        #parameter_vector= np.concatenate(parameter_vector, tempW)
+        #arameter_vector = np.concatenate(parameter_vector, tempb)
+              
+    return theta # parameter_vector#[...,None]  # this makes sure that its not tuple
 
 def gradient_to_vector(grads):
  #   This function will convert parameters dictionary to vectors
     L=len(grads) // 3
-    grad_vector=[]
+    count=0
+    #grad_vector=[]
     for i in range(L):
-        tempW = grads["dW" + str(i + 1)].flatten()
-        tempb = grads["db" + str(i + 1)].flatten()
-        grad_vector= np.append(grad_vector, tempW)
-        grad_vector = np.append(grad_vector, tempb)
+        #tempW = grads["dW" + str(i + 1)].flatten()
+        #tempb = grads["db" + str(i + 1)].flatten()
+        #grad_vector= np.append(grad_vector, tempW)
+        #grad_vector = np.append(grad_vector, tempb)
+        tempW = np.reshape(grads["dW" + str(i + 1)],(-1,1))
+        tempb = np.reshape(grads["db" + str(i + 1)],(-1,1))
+        temp_theta = np.concatenate((tempW,tempb),axis=0)
+        if count == 0:
+            theta = temp_theta           
+        else:
+            theta = np.concatenate((theta,temp_theta), axis=0)
+        count = count + 1
 
-    return grad_vector[...,None] 
- """   
+    return theta#grad_vector[...,None] 
+   
 def mini_batch(train_x, train_y,mini_batch_size):
     np.random.seed(1)
     m = train_x.shape[1]
@@ -324,126 +393,7 @@ def mini_batch(train_x, train_y,mini_batch_size):
     miniBatch =(batchX, batchY)
     miniBatches.append(miniBatch)
     return miniBatches
-    
-  """  
-def dictionary_to_vector(parameters):
-    """
-   # Roll all our parameters dictionary into a single vector satisfying our specific required shape.
-    """
-    keys = []
-    count = 0
-    for key in ["W1", "b1", "W2", "b2", "W3", "b3"]:
-        
-        # flatten parameter
-        new_vector = np.reshape(parameters[key], (-1,1))
-        keys = keys + [key]*new_vector.shape[0]
-        
-        if count == 0:
-            theta = new_vector
-        else:
-            theta = np.concatenate((theta, new_vector), axis=0)
-        count = count + 1
-
-    return theta, keys
-
-def vector_to_dictionary(theta):
-    """
-    #Unroll all our parameters dictionary from a single vector satisfying our specific required shape.
-    """
-    parameters = {}
-    parameters["W1"] = theta[:20].reshape((5,4))
-    parameters["b1"] = theta[20:25].reshape((5,1))
-    parameters["W2"] = theta[25:40].reshape((3,5))
-    parameters["b2"] = theta[40:43].reshape((3,1))
-    parameters["W3"] = theta[43:46].reshape((1,3))
-    parameters["b3"] = theta[46:47].reshape((1,1))
-
-    return parameters
-
-def gradients_to_vector(gradients):
-    """
-   # Roll all our gradients dictionary into a single vector satisfying our specific required shape.
-    """
-    
-    count = 0
-    for key in ["dW1", "db1", "dW2", "db2", "dW3", "db3"]:
-        # flatten parameter
-        new_vector = np.reshape(gradients[key], (-1,1))
-        
-        if count == 0:
-            theta = new_vector
-        else:
-            theta = np.concatenate((theta, new_vector), axis=0)
-        count = count + 1
-
-    return theta
-
-
-def gradient_check_n(parameters, gradients, X, Y, epsilon = 1e-7):
-    """
-    #Checks if backward_propagation_n computes correctly the gradient of the cost output by forward_propagation_n
-    
-    #Arguments:
-    #parameters -- python dictionary containing your parameters "W1", "b1", "W2", "b2", "W3", "b3":
-    #grad -- output of backward_propagation_n, contains gradients of the cost with respect to the parameters.
-    #x -- input datapoint, of shape (input size, 1)
-    #y -- true "label"
-    #epsilon -- tiny shift to the input to compute approximated gradient with formula(1)
-    
-    #Returns:
-    #difference -- difference (2) between the approximated gradient and the backward propagation gradient
-    """
-    
-    # Set-up variables
-    parameters_values, _ = dictionary_to_vector(parameters)
-    grad = gradients_to_vector(gradients)
-    num_parameters = parameters_values.shape[0]
-    J_plus = np.zeros((num_parameters, 1))
-    J_minus = np.zeros((num_parameters, 1))
-    gradapprox = np.zeros((num_parameters, 1))
-    
-    # Compute gradapprox
-    for i in range(num_parameters):
-        
-        # Compute J_plus[i]. Inputs: "parameters_values, epsilon". Output = "J_plus[i]".
-        # "_" is used because the function you have to outputs two parameters but we only care about the first one
-        ### START CODE HERE ### (approx. 3 lines)
-        thetaplus = np.copy(parameters_values)               # Step 1
-        thetaplus[i][0] = thetaplus[i][0] + epsilon                                # Step 2
-        ALPlus, _ = L_layer_forward_activation(X,vector_to_dictionary(thetaplus))                                   # Step 3
-        J_plus[i] = cost_function(ALPlus, Y )
-        ### END CODE HERE ###
-        
-        # Compute J_minus[i]. Inputs: "parameters_values, epsilon". Output = "J_minus[i]".
-        ### START CODE HERE ### (approx. 3 lines)
-        thetaminus = np.copy(parameters_values)                                  # Step 1
-        thetaminus[i][0] = thetaminus[i][0] - epsilon                             
-        ALMinus, _ = L_layer_forward_activation(X,vector_to_dictionary(thetaminus))                             
-        J_minus[i] = cost_function(ALMinus, Y )
-        ### END CODE HERE ###
-        
-        # Compute gradapprox[i]
-        ### START CODE HERE ### (approx. 1 line)
-        gradapprox[i] = np.divide((J_plus[i] - J_minus[i]),(2 * epsilon))
-        ### END CODE HERE ###
-    
-    # Compare gradapprox to backward propagation gradients by computing difference.
-    ### START CODE HERE ### (approx. 1 line)
-    numerator = np.linalg.norm(gradapprox-grad)                                          # Step 1'
-    denominator = np.linalg.norm(gradapprox) + np.linalg.norm(grad)                                        # Step 2'
-    difference = np.divide(numerator,denominator)                                          # Step 3'
-    ### END CODE HERE ###
-
-    if difference > 1e-7:
-        print ("\033[93m" + "There is a mistake in the backward propagation! difference = " + str(difference) + "\033[0m")
-    else:
-        print ("\033[92m" + "Your backward propagation works perfectly fine! difference = " + str(difference) + "\033[0m")
-    
-    return difference  
-
-"""
-
-
+  
 def batch_normalization_forward(x, beta, gamma, epsilon):
     n, d = x.shape
     mu = np.mean(x, axis=1)
@@ -471,45 +421,59 @@ train_X, train_y, test_set_x_orig, test_set_y_orig, classes = load_dataset()
 
 cost_list=[]
 train_X_flatten = train_X.reshape(train_X.shape[0],-1).T
+test_set_x_flatten = test_set_x_orig.reshape(test_set_x_orig.shape[0],-1).T
+test_set_x_flatten= test_set_x_flatten/ 255
 train_X_flatten = train_X_flatten / 255
 learning_rate = 0.01
 #n_x = 12288     # num_px * num_px * 3
 #n_h = 7
 #n_y = 1
 np.random.seed(1)
-x = np.random.randn(4,3)
-y = np.array([1, 1, 0])
-train_X_flatten =x
-train_y =y
-layers_dims = [train_X_flatten.shape[0], 5, 3, 1]
+#x = np.random.randn(4,3)
+#y = np.array([1, 1, 0])
+#train_X_flatten =x
+#train_y =y
+layers_dims = [train_X_flatten.shape[0], 5,3,1]
 number_of_iteration = 1
-epsilon= 1e-6                                       #grad check parameter
+epsilon= 1e-7                                       #grad check parameter
 parameters = initalize_parameters(layers_dims)
-
-batch_x = np.copy(x)
-batch_y = np.copy(y).reshape((1,3))
+algorithm = "standard"
+#batch_x = np.copy(x)
+#batch_y = np.copy(y).reshape((1,3))
+s_momentum = initialize_s_momentum(parameters)
+momentum = initialize_s_momentum(parameters)
 for iter in range(number_of_iteration):
-    #mini_batch_size = 3
-    #batch_data=mini_batch(train_X_flatten, train_y,mini_batch_size)
-    #batch = batch_data[0]
+    mini_batch_size = 64
+    batch_data=mini_batch(train_X_flatten, train_y,mini_batch_size)
+    batch = batch_data[0]
     #for batch in batch_data:
-    #(batch_x , batch_y) = batch
+    (batch_x , batch_y) = batch
     AL, caches = L_layer_forward_activation(batch_x, parameters)
     cost = cost_function(AL,batch_y)    
     grad = L_backward_propagation(AL, batch_y,caches)
-    parameters = parameter_update(grad, learning_rate, parameters)
+   # algorithm = "adam"
+
+    if algorithm == "Grad_momentum":
+        parameters = parameter_update_momentum(parameters,grad, momentum, learning_rate,0.9)        
+    elif algorithm=="RMSprop":
+        parameters = RMS_prop_update(parameters, grad, momentum, learning_rate, 0.9)
+    elif algorithm == "adam":
+        parameters = adam_algorithm(parameters, grad, momentum, learning_rate, 0.9, 0.999,(iter + 1))        
+    else:
+        parameters = parameter_update(grad, learning_rate, parameters)
+            
+        
     #difference = gradient_check_n(parameters, grad, batch_x, batch_y)
     difference, gradApprox = Gradient_check(batch_x, batch_y, parameters, grad, epsilon,layers_dims)
     #break        
     
-    #learning_rate = 0.95**iter * learning_rate                                 #exponentially decaying learning rate
+    learning_rate = 0.95**iter * learning_rate                                 #exponentially decaying learning rate
     #cost_list.append(cost)
     #if(iter % 100==0):
      #   print(" The cost of network at iteration: % d is  : %f " %(iter, cost))
         
             
-
-#Y_hat = predict(train_X_flatten, parameters)
+y_hat = predict(test_set_x_flatten, parameters)
 
 #plt.figure()
 #plt.plot(cost_list)
