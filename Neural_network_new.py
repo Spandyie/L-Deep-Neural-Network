@@ -201,7 +201,7 @@ def RMS_prop_update(parameters, grad, momentum, learning_rate, beta):
         
     
     
-def adam_algorithm(parameters, grad, momentum, learning_rate, beta1, beta2,t):
+def adam_algorithm(parameters, grad, momentum,s_momentum,learning_rate, beta1, beta2,t):
     "beta1, beta2 are the exponential decay rates for moment estimates"
     L= len(grad) // 3
     epsilon = 1e-8
@@ -226,7 +226,7 @@ def adam_algorithm(parameters, grad, momentum, learning_rate, beta1, beta2,t):
 
     
     
-
+"""
 def Load_data(path):    
     filelist = glob.glob(path+"/*.ppm")
     #x = np.array([np.array(Image.open(fname)) for fname in filelist])
@@ -237,7 +237,7 @@ def Load_data(path):
         image_list.append(temp_img)
 
     return image_list
-
+"""
 
 def predict(X, parameters):
     AL,_ = L_layer_forward_activation(X,parameters)
@@ -437,11 +437,12 @@ layers_dims = [train_X_flatten.shape[0], 5,3,1]
 number_of_iteration = 1
 epsilon= 1e-7                                       #grad check parameter
 parameters = initalize_parameters(layers_dims)
-algorithm = "standard"
+s_momentum = initialize_s_momentum(parameters)
+momentum = initialize_momentum(parameters)
+algorithm = "adam"
 #batch_x = np.copy(x)
 #batch_y = np.copy(y).reshape((1,3))
-s_momentum = initialize_s_momentum(parameters)
-momentum = initialize_s_momentum(parameters)
+
 for iter in range(number_of_iteration):
     mini_batch_size = 64
     batch_data=mini_batch(train_X_flatten, train_y,mini_batch_size)
@@ -454,11 +455,11 @@ for iter in range(number_of_iteration):
    # algorithm = "adam"
 
     if algorithm == "Grad_momentum":
-        parameters = parameter_update_momentum(parameters,grad, momentum, learning_rate,0.9)        
+        parameters,_ = parameter_update_momentum(parameters,grad, momentum, learning_rate,0.9)        
     elif algorithm=="RMSprop":
         parameters = RMS_prop_update(parameters, grad, momentum, learning_rate, 0.9)
     elif algorithm == "adam":
-        parameters = adam_algorithm(parameters, grad, momentum, learning_rate, 0.9, 0.999,(iter + 1))        
+        parameters,_,_ = adam_algorithm(parameters, grad, momentum, s_momentum,learning_rate, 0.9, 0.999,(iter + 1))        
     else:
         parameters = parameter_update(grad, learning_rate, parameters)
             
