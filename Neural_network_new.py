@@ -188,9 +188,9 @@ def parameter_update_momentum(parameters,grad, momentum, learning_rate,beta):
     return parameters, momentum
     
 def RMS_prop_update(parameters, grad, momentum, learning_rate, beta):
-    epsilon = 1e-8
-    L= len(grad) //3
-    for i in len(L):
+    epsilon = np.float64(1e-8)
+    L= len(grad) // 3
+    for i in range(L):
         s_momentum["dW" + str(i+1)] = beta * s_momentum["dW" + str(i+1)] + (1-beta) * np.square(grad["dW" +str(i + 1)])
         s_momentum["db" + str(i+1)] = beta * s_momentum["db" + str(i+1)] + (1-beta) * np.square(grad["db" +str(i + 1)])
         
@@ -251,9 +251,6 @@ def predict(X, parameters):
     return Y_prediction
 
 
-
-
-
 def load_dataset():
     train_dataset = h5py.File('train_catvnoncat.h5', "r")
     train_set_x_orig = np.array(train_dataset["train_set_x"][:])  # your train set features
@@ -288,6 +285,7 @@ def Gradient_check(X,Y, parameters, gradients, epsilon,layers_dims):
     J_minus = np.zeros((num_parameters,1))
     GraDderive = np.zeros((num_parameters,1))   
     for i in range(num_parameters):
+        print(i)
         vectorized_param_plus = np.copy(vectorized_param)
         vectorized_param_minus = np.copy(vectorized_param)
         vectorized_param_plus[i][0] = vectorized_param_plus[i][0]+ epsilon
@@ -389,7 +387,7 @@ def mini_batch(train_x, train_y,mini_batch_size):
         miniBatches.append(miniBatch)
     if m % mini_batch_size !=0:
         batchX= ShuffleX[:,(m - m % mini_batch_size):m]
-        batchX= ShuffleY[:,(m - m % mini_batch_size):m]
+        batchY= ShuffleY[:,(m - m % mini_batch_size):m]
     miniBatch =(batchX, batchY)
     miniBatches.append(miniBatch)
     return miniBatches
@@ -404,6 +402,15 @@ def batch_normalization_forward(x, beta, gamma, epsilon):
     gamma_x = beta_x + gamma
 
     return gamma_x
+
+def prediction_error(y_hat,y):
+    """y_hat is the prediction, y is the actual observation"""
+    
+    y_hat = y_hat.reshape((y.shape[0],y.shape[1]))
+      
+    error = np.sum(np.abs(y_hat-y))
+    error_fraction = np.divide(error, len(y)) * 100
+    return error_fraction    
 
 # This is the main function which call all the above subroutines and loads the data
 #path="C:/Users/Spandan Mishra/Documents/GitHub/BelgianTrafficSigns/Training/00000"
@@ -426,58 +433,54 @@ test_set_x_flatten= test_set_x_flatten/ 255
 train_X_flatten = train_X_flatten / 255
 learning_rate = 0.01
 #n_x = 12288     # num_px * num_px * 3
-#n_h = 7
-#n_y = 1
+n_h = 7
+n_y = 1
 np.random.seed(1)
 #x = np.random.randn(4,3)
 #y = np.array([1, 1, 0])
 #train_X_flatten =x
 #train_y =y
 layers_dims = [train_X_flatten.shape[0], 5,3,1]
-number_of_iteration = 1
-epsilon= 1e-7                                       #grad check parameter
+number_of_iteration = 100000
+epsilon= 1e-7                                     #grad check parameter
 parameters = initalize_parameters(layers_dims)
 s_momentum = initialize_s_momentum(parameters)
 momentum = initialize_momentum(parameters)
-algorithm = "adam"
+algorithm = "Standard"
 #batch_x = np.copy(x)
 #batch_y = np.copy(y).reshape((1,3))
 
 for iter in range(number_of_iteration):
     mini_batch_size = 64
     batch_data=mini_batch(train_X_flatten, train_y,mini_batch_size)
-    batch = batch_data[0]
-    #for batch in batch_data:
-    (batch_x , batch_y) = batch
-    AL, caches = L_layer_forward_activation(batch_x, parameters)
-    cost = cost_function(AL,batch_y)    
-    grad = L_backward_propagation(AL, batch_y,caches)
-   # algorithm = "adam"
-
-    if algorithm == "Grad_momentum":
-        parameters,_ = parameter_update_momentum(parameters,grad, momentum, learning_rate,0.9)        
-    elif algorithm=="RMSprop":
-        parameters = RMS_prop_update(parameters, grad, momentum, learning_rate, 0.9)
-    elif algorithm == "adam":
-        parameters,_,_ = adam_algorithm(parameters, grad, momentum, s_momentum,learning_rate, 0.9, 0.999,(iter + 1))        
-    else:
-        parameters = parameter_update(grad, learning_rate, parameters)
-            
-        
-    #difference = gradient_check_n(parameters, grad, batch_x, batch_y)
-    difference, gradApprox = Gradient_check(batch_x, batch_y, parameters, grad, epsilon,layers_dims)
-    #break        
+    #batch = batch_data[0]
+    for batch in batch_data:
+        (batch_x , batch_y) = batch
+        AL, caches = L_layer_forward_activation(batch_x, parameters)
+        cost = cost_function(AL,batch_y)
+        grad = L_backward_propagation(AL, batch_y,caches)
+        if algorithm == "Grad_momentum":
+            parameters,_ = parameter_update_momentum(parameters,grad, momentum, learning_rate,0.9)        
+        elif algorithm=="RMSprop":
+            parameters,_ = RMS_prop_update(parameters, grad, momentum, learning_rate, 0.9)
+        elif algorithm == "adam":
+            parameters,_,_ = adam_algorithm(parameters, grad, momentum, s_momentum,learning_rate, 0.9, 0.999,(iter + 1))        
+        else:
+            parameters = parameter_update(grad, learning_rate, parameters)    
     
+        #if iter==15:
+         #   difference, gradApprox = Gradient_check(batch_x, batch_y, parameters, grad, epsilon,layers_dims)
+        cost_list.append(cost)
     learning_rate = 0.95**iter * learning_rate                                 #exponentially decaying learning rate
-    #cost_list.append(cost)
-    #if(iter % 100==0):
-     #   print(" The cost of network at iteration: % d is  : %f " %(iter, cost))
+    if(iter % 100==0):
+        print(" The cost of network at iteration: % d is  : %f " %(iter, cost))
+y_hat_training = predict(train_X_flatten,parameters) 
+trainin_error_rate = prediction_error(y_hat_training,train_y)  
         
-            
-y_hat = predict(test_set_x_flatten, parameters)
 
-#plt.figure()
-#plt.plot(cost_list)
+
+plt.figure()
+plt.plot(cost_list)
 
 
 
