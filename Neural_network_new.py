@@ -6,6 +6,7 @@ import glob
 import h5py
 from PIL import Image
 import matplotlib.image as mpimg
+import sys
 
 
 def relu(z):
@@ -20,15 +21,15 @@ def sigmoid(z):
 
 def initalize_parameters(layers_dim):
     """n_x is the dimension of input data, n_y is dimension of output dat,n_h size of hidden layers"""
-    np.random.seed(3)
+    #np.random.seed(3)
     parameters = {} # dictionary used to store the parameters
     L = len(layers_dim)
     for i in range(L-2):
-        parameters["W"+ str(i+1)] = np.random.randn(layers_dim[i+1], layers_dim[i]) * np.sqrt(np.divide(2,layers_dim[i]))  # he initialization for relu
+        parameters["W"+ str(i+1)] = np.random.randn(layers_dim[i+1], layers_dim[i]) # * np.sqrt(np.divide(2,layers_dim[i]))  # he initialization for relu
         parameters["b"+str(i+1)] = np.zeros((layers_dim[i+1], 1))
         assert (parameters["W" + str(i+1)].shape == (layers_dim[i+1], layers_dim[i]))
         assert (parameters["b" + str(i+1)].shape == (layers_dim[i+1], 1))
-    parameters["W" + str(L-1)] = np.random.randn(layers_dim[L-1], layers_dim[L - 2]) * np.sqrt(np.divide(1, layers_dim[L - 2]))  #he initialization, to avoid vanishing and exploding gradieints
+    parameters["W" + str(L-1)] = np.random.randn(layers_dim[L-1], layers_dim[L - 2])# * np.sqrt(np.divide(1, layers_dim[L - 2]))  #he initialization, to avoid vanishing and exploding gradieints
     parameters["b" + str(L-1)] = np.zeros((layers_dim[L-1], 1))
     assert (parameters["W" + str(L-1)].shape == (layers_dim[L-1], layers_dim[L - 2]))
     assert (parameters["b" + str(L-1)].shape == (layers_dim[L-1], 1))
@@ -78,25 +79,19 @@ def backward_sigmoid(dA, activation_cache ):
 
 
 def backward_relu(dA, activation_cache):
-    #Z = np.copy(activation_cache)
-    #gZ_prime = np.copy(activation_cache)  # y = ReLU(x),
-    #gZ_prime[Z <= 0 ]= 0
-    #gZ_prime[Z > 0 ]= 1
     gZ_prime = np.int64(activation_cache>0)
     dZ =  np.multiply(dA, np.int64(activation_cache > 0))
-    #dZ=np.array(dA,copy=True)    
-    #dZ[Z <= 0] = 0
     assert(gZ_prime.shape == dA.shape)
     assert(dZ.shape == dA.shape )
     return dZ, gZ_prime
 
-def backward_linear(dZ,linear_cache):
+def backward_linear(dZ,lmbda, linear_cache):
     """This function will translate dz linearly from one layer to another. Here cache comes from def forward_linear(A,W,b):
     """
     A_prev, W, b = linear_cache
     m= A_prev.shape[1]           #number of training data
-    dW = 1/m * np.dot(dZ,A_prev.T)
-    db = 1/m * np.sum(dZ,axis=1,keepdims=True)
+    dW = 1/m * np.dot(dZ,A_prev.T) + np.multiply(lmbda / m , W,dtype= np.float64)
+    db = 1/m * np.sum(dZ,axis=1,dtype=np.float64,keepdims=True)
     dA_prev = np.dot(W.T, dZ)
     assert(dW.shape == W.shape)
     assert(db.shape == b.shape)
@@ -104,54 +99,52 @@ def backward_linear(dZ,linear_cache):
     return dW, db, dA_prev
 
 
-def backward_activation(dA,cache,activation):
+def backward_activation(dA,cache,lmbda,activation):
     """This function estimates dZ from dA obtained using backward_linear"""
-    linear_cache, activation_cache= cache     # cache for any given layers
+    linear_cache, activation_cache= cache             # cache for any given layers
     Z = activation_cache
     if activation == "sigmoid":
         dZ, g = backward_sigmoid(dA, Z)                #sigmoid derivative
-        #dZ = dA * g
-        dW, db, dA_prev = backward_linear(dZ, linear_cache)
+        dW, db, dA_prev = backward_linear(dZ, lmbda, linear_cache)
     elif activation == "relu":
         dZ, g = backward_relu(dA, Z)
-        #dZ = dA * g
-        dW, db, dA_prev = backward_linear(dZ, linear_cache)
+        dW, db, dA_prev = backward_linear(dZ, lmbda,linear_cache)
     else:
         print("Error!! enter the correct activation function")
        
     return dW, db, dA_prev
 
-def L_backward_propagation(AL,Y,caches):
+def L_backward_propagation(AL,Y,caches,lmbda):
     """ This part of the code does the full backward propagation"""
     grad={}
-    L = len(caches) # NUmber of layers in the ANN
+    L = len(caches)                                                             # Number of layers in the ANN
     Y= Y.reshape(AL.shape)
     ##################################################
     dAL = -(np.divide(Y, AL) - np.divide((1 - Y), (1 - AL)))
     cache = caches[L-1]
-    dW, db, dA_prev = backward_activation(dAL,cache,"sigmoid")
+    dW, db, dA_prev = backward_activation(dAL,cache,lmbda,"sigmoid")
     #################################
     grad["dA"+str(L)] = dA_prev
     grad["dW" + str(L)] = dW
     grad["db" + str(L)] = db
     for i in reversed(range(L-1)):
         cache=caches[i]
-        dW, db, dA_prev = backward_activation(grad["dA"+str(i+2)],cache,"relu")
+        dW, db, dA_prev = backward_activation(grad["dA"+str(i+2)],cache,lmbda,"relu")
         grad["dA"+str(i+1)] = dA_prev
         grad["dW" + str(i+1)] = dW
-        grad["db" + str(i+1)] = db
+        grad["db" + str(i+1)] = db    
+
     return grad
-
-
+#####################################################################################
+##########################################################################################
 def parameter_update(grad,learning_rate,parameters):
     """This function updates the paramters"""    
     L = len(parameters) //2
     for i in range(L):
         parameters["W" + str(i+1)] = parameters["W" + str(i+1)] - learning_rate * grad["dW" + str(i+1)]
         parameters["b" + str(i+1)] = parameters["b" + str(i+1)] - learning_rate * grad["db" + str(i+1)]
-       
     return parameters
-    
+############################################################################################
 def initialize_momentum(parameters):
     """ Initializes the first momentum"""
     momentum={}
@@ -163,7 +156,7 @@ def initialize_momentum(parameters):
         assert(momentum["dW" +str(i+1)].shape == parameters["W" +str(i+1)].shape)
         assert(momentum["db" +str(i+1)].shape == parameters["b" +str(i+1)].shape)
     return momentum
-
+########################################################################################
 def initialize_s_momentum(parameters):
     """Initializes the second momentum of weights"""
     s_momentum={}
@@ -221,8 +214,7 @@ def adam_algorithm(parameters, grad, momentum,s_momentum,learning_rate, beta1, b
         
         parameters["W" +str(i+1)] = parameters["W" +str(i+1)] - learning_rate_t * np.divide(momentum["dW" + str(i+1)], (np.sqrt(s_momentum["dW" +str(i+1)]) +epsilon))
         parameters["b" +str(i+1)] = parameters["b" +str(i+1)] - learning_rate_t * np.divide(momentum["db" + str(i+1)], (np.sqrt(s_momentum["db" +str(i+1)]) +epsilon))
-    return parameters, momentum, s_momentum
-    
+    return parameters, momentum, s_momentum  
 
     
     
@@ -255,29 +247,38 @@ def load_dataset():
     train_dataset = h5py.File('train_catvnoncat.h5', "r")
     train_set_x_orig = np.array(train_dataset["train_set_x"][:])  # your train set features
     train_set_y_orig = np.array(train_dataset["train_set_y"][:])  # your train set labels
-
     test_dataset = h5py.File('test_catvnoncat.h5', "r")
     test_set_x_orig = np.array(test_dataset["test_set_x"][:])  # your test set features
     test_set_y_orig = np.array(test_dataset["test_set_y"][:])  # your test set labels
-
     classes = np.array(test_dataset["list_classes"][:])  # the list of classes
-
     train_set_y_orig = train_set_y_orig.reshape((1, train_set_y_orig.shape[0]))
     test_set_y_orig = test_set_y_orig.reshape((1, test_set_y_orig.shape[0]))
     return train_set_x_orig, train_set_y_orig, test_set_x_orig, test_set_y_orig, classes
 
 def cost_function(AL, Y ):
+    """Unregularized cost function"""
     m =  Y.shape[1]
     cost = -1/m * (np.dot(Y,np.log(AL.T)) + np.dot((1-Y),np.log(1-AL.T)))
     cost = np.squeeze(cost)
     assert(cost.shape ==())
     return cost
+def compute_cost_regularization(AL,Y,parameters,lmbda):
+    """Returns regularized cost function"""
+    m= Y.shape[1]
+    cost = -1.0 / m * (np.dot(Y,np.log(AL.T)) + np.dot((1-Y),np.log(1-AL.T)))
+    L = len(parameters)//2
+    regularization_value = 0
+    for i in range(L):
+        regularization_value = regularization_value + np.sum(np.square(parameters["W" +str(i+1)]),dtype= np.float64)
+    cost_regularization = cost + lmbda / (2*m) * regularization_value
+    cost_regularization= np.squeeze(cost_regularization)
+    assert(cost_regularization.shape == ())
+    return cost_regularization
 
-def Gradient_check(X,Y, parameters, gradients, epsilon,layers_dims):
-  # parameters: Estimated set of parameters estimated using Back-Propagation
+def Gradient_check(X,Y, parameters, gradients, epsilon,layers_dims,lmbda):
+   # parameters: Estimated set of parameters estimated using Back-Propagation
    # gradients: estimated using back-propagation
-   # layer_dims: This is the list containing number of nodes in different hidden layers
-      
+   # layer_dims: This is the list containing number of nodes in different hidden layers      
     vectorized_param = dictionary_to_vector(parameters)
     grads = gradient_to_vector(gradients)           
     num_parameters = vectorized_param.shape[0]
@@ -295,13 +296,15 @@ def Gradient_check(X,Y, parameters, gradients, epsilon,layers_dims):
         y_hat_plus, _= L_layer_forward_activation(X,param_plus)
         y_hat_minus, _= L_layer_forward_activation(X,param_minus)
              
-        J_plus[i] = cost_function(y_hat_plus, Y )
-        J_minus[i] = cost_function(y_hat_minus, Y )
-        GraDderive[i] = np.divide((J_plus[i] - J_minus[i]), (2 * epsilon))
+        #J_plus[i] = cost_function(y_hat_plus, Y )
+        #J_minus[i] = cost_function(y_hat_minus, Y )
+        J_plus[i]  =  compute_cost_regularization(y_hat_plus,Y,param_plus,lmbda)
+        J_minus[i] = compute_cost_regularization(y_hat_minus,Y,param_minus,lmbda)
+        GraDderive[i] = np.divide((J_plus[i] - J_minus[i]), (2 * epsilon), dtype = np.float64)
         
     numerator = np.linalg.norm(GraDderive-grads)
     denominator = np.linalg.norm(grads) + np.linalg.norm(GraDderive)
-    error =  np.divide(numerator, denominator)
+    error =  np.divide(numerator, denominator, dtype = np.float64)
     
     if error > epsilon:
         print ("\033[93m" + "There is a mistake in the backward propagation! difference = " + str(error) + "\033[0m")
@@ -332,10 +335,6 @@ def dictionary_to_vector(parameters):
     #parameter_vector=[]
     
     for i in range(L):
-        #tempW = parameters["W" + str(i + 1)].flatten()
-        #tempb = parameters["b" + str(i + 1)].flatten()
-        #parameter_vector= np.append(parameter_vector, tempW)
-        #parameter_vector = np.append(parameter_vector, tempb)
         tempW = np.reshape(parameters["W" + str(i + 1)],(-1,1))
         tempb = np.reshape(parameters["b" + str(i + 1)],(-1,1))
         temp_theta = np.concatenate((tempW,tempb),axis=0)
@@ -344,21 +343,14 @@ def dictionary_to_vector(parameters):
         else:
             theta = np.concatenate((theta,temp_theta), axis=0)
         count = count + 1
-        #parameter_vector= np.concatenate(parameter_vector, tempW)
-        #arameter_vector = np.concatenate(parameter_vector, tempb)
-              
-    return theta # parameter_vector#[...,None]  # this makes sure that its not tuple
+             
+    return theta 
 
 def gradient_to_vector(grads):
  #   This function will convert parameters dictionary to vectors
     L=len(grads) // 3
     count=0
-    #grad_vector=[]
     for i in range(L):
-        #tempW = grads["dW" + str(i + 1)].flatten()
-        #tempb = grads["db" + str(i + 1)].flatten()
-        #grad_vector= np.append(grad_vector, tempW)
-        #grad_vector = np.append(grad_vector, tempb)
         tempW = np.reshape(grads["dW" + str(i + 1)],(-1,1))
         tempb = np.reshape(grads["db" + str(i + 1)],(-1,1))
         temp_theta = np.concatenate((tempW,tempb),axis=0)
@@ -368,17 +360,15 @@ def gradient_to_vector(grads):
             theta = np.concatenate((theta,temp_theta), axis=0)
         count = count + 1
 
-    return theta#grad_vector[...,None] 
+    return theta
    
 def mini_batch(train_x, train_y,mini_batch_size):
-    np.random.seed(1)
     m = train_x.shape[1]
     num_complete_batch = math.floor(m / mini_batch_size)
     permutation = list(np.random.permutation(m))
     ShuffleX= train_x[:,permutation]
     ShuffleY= train_y[:,permutation]
-    miniBatches=[]
-   
+    miniBatches=[]   
     for i in range(num_complete_batch):
         batchX = ShuffleX[:, (i * mini_batch_size):((i+1) * mini_batch_size)]
         batchY = ShuffleY[:,(i * mini_batch_size):((i+1) * mini_batch_size)]
@@ -398,86 +388,103 @@ def batch_normalization_forward(x, beta, gamma, epsilon):
     sig = np.sqrt(np.var(x,axis =1))
     stand_x = (x - mu) / (sig + epsilon)
     beta_x = stand_x * beta
-
     gamma_x = beta_x + gamma
-
     return gamma_x
 
 def prediction_error(y_hat,y):
-    """y_hat is the prediction, y is the actual observation"""
-    
-    y_hat = y_hat.reshape((y.shape[0],y.shape[1]))
-      
+    """y_hat is the prediction, y is the actual observation"""    
+    y_hat = y_hat.reshape((y.shape[0],y.shape[1]))      
     error = np.sum(np.abs(y_hat-y))
-    error_fraction = np.divide(error, len(y)) * 100
+    error_fraction = np.divide(error, y.shape[1]) * 100
     return error_fraction    
 
-# This is the main function which call all the above subroutines and loads the data
-#path="C:/Users/Spandan Mishra/Documents/GitHub/BelgianTrafficSigns/Training/00000"
-#Image_data = Load_data(path)
-#Image_matrix= np.array(Image_data, dtype=np.float64)
+def layer_configuration(n_x,number_h,hidden_dimension,n_y):
+    """The dimension of hidden layer"""
+    layer_dim=[]
+    layer_dim.append(n_x)
+    for i in range(number_h):
+        layer_dim.append(hidden_dimension[i])
+    layer_dim.append(n_y)
+    return layer_dim
+    
 
-#data = np.array([mpimg.imread(path+"/"+name) for name in os.listdir(path)], dtype=np.float64)
-np.random.seed(1)
+#np.random.seed(1)
 train_X, train_y, test_set_x_orig, test_set_y_orig, classes = load_dataset()
-
-#index = 10
-#plt.imshow(train_X[index])
-#print ("y = " + str(train_y[0,index]) + ". It's a " + classes[train_y[0,index]].decode("utf-8") +  " picture.")
-# lets flatten the training data
-
 cost_list=[]
 train_X_flatten = train_X.reshape(train_X.shape[0],-1).T
 test_set_x_flatten = test_set_x_orig.reshape(test_set_x_orig.shape[0],-1).T
 test_set_x_flatten= test_set_x_flatten/ 255
 train_X_flatten = train_X_flatten / 255
-learning_rate = 0.01
-#n_x = 12288     # num_px * num_px * 3
-n_h = 7
+#learning_rate = 0.007
+GradienntCheck= True
+lr0= 0.001                                                                     # initial learning rate
+drop =0.5
+epochs_drop = 10                                                               # drop the learning rate by half every 10 epochs
+n_x = train_X_flatten.shape[0]                                                 # num_px * num_px * 3
+n_hid_layer = 2
+hidden_dimension= [2,2]
 n_y = 1
-np.random.seed(1)
-#x = np.random.randn(4,3)
-#y = np.array([1, 1, 0])
-#train_X_flatten =x
-#train_y =y
-layers_dims = [train_X_flatten.shape[0], 5,3,1]
-number_of_iteration = 100000
-epsilon= 1e-7                                     #grad check parameter
+
+layers_dims = layer_configuration(n_x,n_hid_layer,hidden_dimension,n_y)        #[n_x, n_h1, n_h2, n_h3, n_h4, n_h5, n_y]
+number_of_iteration = 1000
+epsilon= 1e-7                                                                  #grad check parameter
 parameters = initalize_parameters(layers_dims)
 s_momentum = initialize_s_momentum(parameters)
 momentum = initialize_momentum(parameters)
-algorithm = "Standard"
-#batch_x = np.copy(x)
-#batch_y = np.copy(y).reshape((1,3))
-
-for iter in range(number_of_iteration):
-    mini_batch_size = 64
+algorithm = "1"
+mini_batch_size = 128
+learning_rate =lr0
+lmbda =0.3
+for epoch in range(number_of_iteration):    
     batch_data=mini_batch(train_X_flatten, train_y,mini_batch_size)
-    #batch = batch_data[0]
     for batch in batch_data:
         (batch_x , batch_y) = batch
         AL, caches = L_layer_forward_activation(batch_x, parameters)
-        cost = cost_function(AL,batch_y)
-        grad = L_backward_propagation(AL, batch_y,caches)
+        #cost_old = cost_function(AL,batch_y)
+        cost =  compute_cost_regularization(AL,batch_y,parameters,lmbda)
+        grad = L_backward_propagation(AL, batch_y,caches,lmbda)
         if algorithm == "Grad_momentum":
             parameters,_ = parameter_update_momentum(parameters,grad, momentum, learning_rate,0.9)        
         elif algorithm=="RMSprop":
             parameters,_ = RMS_prop_update(parameters, grad, momentum, learning_rate, 0.9)
         elif algorithm == "adam":
-            parameters,_,_ = adam_algorithm(parameters, grad, momentum, s_momentum,learning_rate, 0.9, 0.999,(iter + 1))        
+            parameters,_,_ = adam_algorithm(parameters, grad, momentum, s_momentum,learning_rate, 0.9, 0.999,(epoch + 1))        
         else:
             parameters = parameter_update(grad, learning_rate, parameters)    
     
-        #if iter==15:
-         #   difference, gradApprox = Gradient_check(batch_x, batch_y, parameters, grad, epsilon,layers_dims)
-        cost_list.append(cost)
-    learning_rate = 0.95**iter * learning_rate                                 #exponentially decaying learning rate
-    if(iter % 100==0):
-        print(" The cost of network at iteration: % d is  : %f " %(iter, cost))
-y_hat_training = predict(train_X_flatten,parameters) 
-trainin_error_rate = prediction_error(y_hat_training,train_y)  
+        #if epoch==10:
+            #difference, gradApprox = Gradient_check(batch_x, batch_y, parameters, grad, epsilon,layers_dims)
+         #   difference, gradApprox = Gradient_check(batch_x, batch_y, parameters, grad, epsilon,layers_dims, lmbda)
+          #  sys.exit()
+          #  break
         
+        cost_list.append(cost)
+    #learning_rate = np.power(0.95, epoch) * learning_rate                                 #exponentially decaying learning rate
+    learning_rate = lr0 * drop**math.floor(epoch / epochs_drop) 
+    if(epoch % 100==0):
+        print(" The cost of network at epoch: % d/%d is  : %f " %(epoch, number_of_iteration,cost))
 
+##########################
+perm = list(np.random.permutation(test_set_x_flatten.shape[1]))
+dev_perm = perm[0:len(perm)//2]
+test_perm =list(set(perm)- set(dev_perm))
+##################################
+dev_x = test_set_x_flatten[:,dev_perm]
+test_x = test_set_x_flatten[:,test_perm]
+dev_y =  test_set_y_orig[:,dev_perm]
+test_y = test_set_y_orig[:,test_perm]
+########################################
+y_hat_training = predict(train_X_flatten,parameters)
+y_hat_dev = predict(dev_x,parameters)
+y_hat_test = predict(test_x,parameters)
+ ####################################################
+trainin_error_rate = prediction_error(y_hat_training,train_y)
+dev_error_rate = prediction_error(y_hat_dev,dev_y)
+test_error_rate = prediction_error(y_hat_test,test_y)
+
+print("The training set error on the data is:"+ str(trainin_error_rate))
+print("The dev set error is:"+ str(dev_error_rate))
+print("The test set error is:" + str(test_error_rate))
 
 plt.figure()
 plt.plot(cost_list)
