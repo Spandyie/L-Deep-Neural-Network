@@ -1,0 +1,3 @@
+Neural neworks are typically organized in layers. Layers are made up of a number of interconnected 'nodes' which contain an 'activation function'. Patterns are presented to the network via the 'input layer', which communicates to one or more 'hidden layers' where the actual processing is done via a system of weighted 'connections'.
+The hidden layers then link to an 'output layer' where the answer is output as shown in the graphic. Backpropgation is done to learn the
+rate of change of parameters with respect to input fucntion values. This repository consist of python code for fully connected neural network.
